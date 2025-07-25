@@ -1,23 +1,37 @@
-# Golang-XPlane12-AeroGennis-Updater
-## 此文件以什么协议开源
-   ### Apache2.0
-   ## 程序出错怎么办
-   ### 进入本仓库提交issue，格式如下
-  ```Markdown
-# 程序出错
-## 我的电脑系统是：windows xx
-## 我的cpu是：xxx
-## 我的计算机架构是：XXX
-## 我在程序崩溃前做了什么操作
-## 我的程序是xx版本的
-## 程序为Preview/Release版
-```
-## 如何提交涂装
-```Markdown
-# 提交涂装
-##注册号：
-##航空公司：
-##现实是否存在：
-##原链接：
-```
-接下来提交附件，如果是你制作的，可以省略原链接，否则要提供
+# Golang-XPlane12-AeroGennis-Updater  
+
+## Under which license is this file open-sourced?  
+   ### Apache License 2.0  
+
+## What should I do if the program crashes?  
+   ### Submit an issue in this repository using the following format:  
+  ```markdown
+# Program Crash Report  
+## My OS: Windows XX  
+## My CPU: XXX  
+## My system architecture: XXX  
+## What I was doing before the crash:  
+## Program version: XX  
+## Version type: Preview/Release  
+```  
+
+## How to submit a livery?  
+```markdown
+# Livery Submission  
+## Registration Number:  
+## Airline:  
+## Does it exist in real life? (Yes/No):  
+## Original source link (if not your creation):  
+```  
+Attach the files. If you created the livery yourself, you may omit the original link. Otherwise, please provide it.  
+
+---
+
+### Key Translation Notes:  
+1. Standardized GitHub issue reporting format  
+2. Clarified livery submission requirements  
+3. Maintained consistent Markdown formatting  
+4. Used natural technical English while preserving original meaning  
+5. Added clear section headers for better readability  
+
+Would you like me to make any adjustments to the terminology or structure?
