@@ -268,10 +268,6 @@ func createUpdateTab(state *AppState) fyne.CanvasObject {
 	state.updateExeBtn = widget.NewButton(state.tr("download_latest_button"), func() { handleExeUpdate(state) })
 	return container.NewVBox(widget.NewLabelWithStyle(state.tr("update_tab_title"), fyne.TextAlignCenter, fyne.TextStyle{Bold: true}), widget.NewLabel(state.tr("update_tab_desc")), widget.NewLabel(state.tr("update_tab_warning")), state.updateExeBtn)
 }
-func createUpdateTab(state *AppState) fyne.CanvasObject {
-	state.updateExeBtn = widget.NewButton(state.tr("download_latest_button"), func() { handleExeUpdate(state) })
-	return container.NewVBox(widget.NewLabelWithStyle(state.tr("update_tab_title"), fyne.TextAlignCenter, fyne.TextStyle{Bold: true}), widget.NewLabel(state.tr("update_tab_desc")), widget.NewLabel(state.tr("update_tab_warning")), state.updateExeBtn)
-}
 
 func createSettingsTab(state *AppState) fyne.CanvasObject {
 	pathLabel := widget.NewLabel(state.tr("current_path_label", state.xpPath))
@@ -520,202 +516,9 @@ func handleExeUpdate(state *AppState) {
 	}, state.mainWindow)
 }
 
-// 创建线程安全的下载函数
-func downloadFileWithProgressSafe(url, destPath string, state *AppState, statusUpdates chan<- string, progressUpdates chan<- float64) error {
-	// URL 验证
-	if !strings.HasPrefix(url, "https://files.zohopublic.com.cn") {
-		return fmt.Errorf("无效的下载 URL: %s", url)
-	}
+// (removed duplicate definition of downloadFileWithProgressSafe)
 
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s", resp.Status)
-	}
-	totalBytes := resp.ContentLength
-	file, err := os.Create(destPath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	// 使用 bufio.Writer 优化写入性能
-	writer := bufio.NewWriter(file)
-	defer writer.Flush()
-
-	if totalBytes <= 0 {
-		select {
-		case statusUpdates <- state.tr("download_no_progress"):
-		default:
-		}
-		select {
-		case progressUpdates <- 0.5:
-		default:
-		}
-		_, err = io.Copy(writer, resp.Body)
-		return err
-	}
-
-	// 优化缓冲区大小为 64KB
-	buf := make([]byte, 64*1024)
-	var downloadedBytes int64
-	startTime := time.Now()
-	lastUpdateTime := time.Now()
-
-	for {
-		n, readErr := resp.Body.Read(buf)
-		if n > 0 {
-			if _, writeErr := writer.Write(buf[0:n]); writeErr != nil {
-				return writeErr
-			}
-			downloadedBytes += int64(n)
-
-			// 限制更新频率，每100ms更新一次
-			if time.Since(lastUpdateTime) > 100*time.Millisecond {
-				speed := float64(downloadedBytes) / time.Since(startTime).Seconds() / (1024 * 1024)
-				progress := float64(downloadedBytes) / float64(totalBytes)
-
-				select {
-				case statusUpdates <- state.tr("download_progress_label", float64(downloadedBytes)/(1024*1024), float64(totalBytes)/(1024*1024), speed):
-				default:
-				}
-				select {
-				case progressUpdates <- progress:
-				default:
-				}
-				lastUpdateTime = time.Now()
-			}
-		}
-		if readErr == io.EOF {
-			break
-		}
-		if readErr != nil {
-			return readErr
-		}
-	}
-	return nil
-}
-
-// 创建线程安全的解压函数
-func extractZipGUISafe(zipFile, destDir string, isAircraft bool, state *AppState, statusUpdates chan<- string, progressUpdates chan<- float64) error {
-	r, err := zip.OpenReader(zipFile)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-
-	totalFiles := len(r.File)
-	destRoot := destDir
-	if isAircraft {
-		destRoot = filepath.Join(destDir, "AeroGennis Airbus A330-300")
-	}
-
-	lastUpdateTime := time.Now()
-
-	for i, f := range r.File {
-		fpath := filepath.Join(destRoot, f.Name)
-		// 路径安全验证
-		if !strings.HasPrefix(filepath.Clean(fpath), filepath.Clean(destRoot)+string(os.PathSeparator)) {
-			return fmt.Errorf("非法文件路径: %s", fpath)
-		}
-
-		// 限制更新频率
-		if time.Since(lastUpdateTime) > 50*time.Millisecond {
-			progress := float64(i+1) / float64(totalFiles)
-			select {
-			case progressUpdates <- progress:
-			default:
-			}
-			select {
-			case statusUpdates <- state.tr("extract_progress_label", f.Name):
-			default:
-			}
-			lastUpdateTime = time.Now()
-		}
-
-		if f.FileInfo().IsDir() {
-			os.MkdirAll(fpath, os.ModePerm)
-			continue
-		}
-		if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
-			return err
-		}
-		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
-		if err != nil {
-			return err
-		}
-		rc, err := f.Open()
-		if err != nil {
-			outFile.Close()
-			return err
-		}
-		_, err = io.Copy(outFile, rc)
-		outFile.Close()
-		rc.Close()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-func createSettingsTab(state *AppState) fyne.CanvasObject {
-	pathLabel := widget.NewLabel(state.tr("current_path_label", state.xpPath))
-	pathLabel.Wrapping = fyne.TextWrapWord
-
-	changePathBtn := widget.NewButton(state.tr("change_path_button"), func() {
-		state.mainWindow.SetContent(createSetupUI(state))
-	})
-
-	changeLangBtn := widget.NewButton(state.tr("change_language_button"), func() {
-		state.mainWindow.SetContent(createLanguageSelectionUI(state))
-	})
-
-	ag330PathEntry := widget.NewEntry()
-	ag330PathEntry.SetText(state.ag330Path)
-	ag330PathEntry.SetPlaceHolder(state.tr("manual_path_placeholder"))
-
-	saveAg330PathBtn := widget.NewButton(state.tr("save_manual_path_button"), func() {
-		manualPath := ag330PathEntry.Text
-		if info, err := os.Stat(manualPath); err != nil || !info.IsDir() {
-			dialog.ShowError(fmt.Errorf("%s", state.tr("manual_path_error")), state.mainWindow)
-			return
-		}
-		state.ag330Path = manualPath
-		if err := writeConfig(state); err != nil {
-			dialog.ShowError(fmt.Errorf("%s: %w", state.tr("save_config_error"), err), state.mainWindow)
-			return
-		}
-		checkAircraftInstallation(state)
-		state.mainWindow.SetContent(createMainUI(state))
-		dialog.ShowInformation(state.tr("save_success_title"), state.tr("save_manual_path_success"), state.mainWindow)
-	})
-	uninstallAircraftBtn := widget.NewButton(state.tr("uninstall_aircraft_button"), func() { handleUninstallAircraft(state) })
-	uninstallAircraftBtn.Importance = widget.DangerImportance
-	if !state.isAircraftInstalled {
-		uninstallAircraftBtn.Disable()
-	}
-	selfUninstallWarning := widget.NewLabel(state.tr("self_uninstall_warning"))
-	selfUninstallWarning.Wrapping = fyne.TextWrapWord
-	selfUninstallBtn := widget.NewButton(state.tr("self_uninstall_button"), func() { handleSelfUninstall(state) })
-	selfUninstallBtn.Importance = widget.DangerImportance
-	return container.NewVBox(
-		widget.NewLabelWithStyle(state.tr("settings_tab_title"), fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
-		pathLabel, changePathBtn, changeLangBtn, widget.NewSeparator(),
-		widget.NewLabelWithStyle(state.tr("manual_path_label"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
-		ag330PathEntry, saveAg330PathBtn, widget.NewSeparator(),
-		widget.NewLabelWithStyle(state.tr("danger_zone_label"), fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
-		uninstallAircraftBtn, widget.NewSeparator(),
-		selfUninstallWarning, selfUninstallBtn,
-	)
-}
-
+// (Removed duplicate definition of extractZipGUISafe)
 func handleUninstallAircraft(state *AppState) {
 	if !state.isAircraftInstalled || state.ag330Path == "" {
 		return
@@ -826,7 +629,7 @@ func handleAircraftInstall(state *AppState) {
 			return
 		}
 
-		aircraftDir := filepath.Join(state.xpPath, "Aircraft")
+		aircraftDir := filepath.Join(state.xpPath, "Aircraft", "Laminar Research")
 		state.statusLabel.SetText(state.tr("status_extracting", aircraftDir))
 
 		err = extractZipGUI(zipPath, aircraftDir, true, state)
@@ -1249,7 +1052,7 @@ func writeConfig(state *AppState) error {
 // 翻译部分保持不变
 var translations = map[string]map[string]string{
 	"en-US": {
-		"window_title":                             "AeroGennis A330-300 Installer - v2025.7.27.15-Preview",
+		"window_title":                             "AeroGennis A330-300 Installer - v2025.8.3.20-Preview",
 		"reinstall_button":                         "Check for Updates / Reinstall",
 		"aircraft_installed_title":                 "Installation Detected",
 		"aircraft_installed_desc":                  "The application has detected that AeroGennis A330-300 is already installed. You can check for updates or reinstall if needed.",
@@ -1344,7 +1147,7 @@ var translations = map[string]map[string]string{
 		"self_uninstall_confirm_message":           "Are you sure you want to completely remove this application and its related files from your computer?",
 	},
 	"zh-CN": {
-		"window_title":                             "AeroGennis A330-300 安装程序 - v2025.7.27.15-Preview",
+		"window_title":                             "AeroGennis A330-300 安装程序 - v2025.8.3.20-Preview",
 		"reinstall_button":                         "检查更新/重新安装",
 		"aircraft_installed_title":                 "检测到已安装",
 		"aircraft_installed_desc":                  "程序检测到 AeroGennis A330-300 已经安装。如果需要，您可以检查更新或重新安装。",
@@ -1439,7 +1242,7 @@ var translations = map[string]map[string]string{
 		"self_uninstall_confirm_message":           "您确定要从您的电脑上完全移除此应用程序及其相关文件吗？",
 	},
 	"zh-TW": {
-		"window_title":                             "AeroGennis A330-300 安裝程式 - v2025.7.27.15-Preview",
+		"window_title":                             "AeroGennis A330-300 安裝程式 - v2025.8.3.20-Preview",
 		"reinstall_button":                         "檢查更新/重新安裝",
 		"aircraft_installed_title":                 "偵測到已安裝",
 		"aircraft_installed_desc":                  "應用程式偵測到 AeroGennis A330-300 已經安裝。如果需要，您可以檢查更新或重新安裝。",
@@ -1534,7 +1337,7 @@ var translations = map[string]map[string]string{
 		"self_uninstall_confirm_message":           "您確定要從您的電腦上完全移除此應用程式及其相關檔案嗎？",
 	},
 	"fr-FR": {
-		"window_title":                             "Installeur AeroGennis A330-300 - v2025.7.27.15-Preview",
+		"window_title":                             "Installeur AeroGennis A330-300 - v2025.8.3.20-Preview",
 		"reinstall_button":                         "Vérifier les mises à jour / Réinstaller",
 		"aircraft_installed_title":                 "Installation Détectée",
 		"aircraft_installed_desc":                  "L'application a détecté que l'AeroGennis A330-300 est déjà installé. Vous pouvez vérifier les mises à jour ou le réinstaller si nécessaire.",
@@ -1629,7 +1432,7 @@ var translations = map[string]map[string]string{
 		"self_uninstall_confirm_message":           "Êtes-vous sûr de vouloir supprimer complètement cette application et ses fichiers associés de votre ordinateur ?",
 	},
 	"ru-RU": {
-		"window_title":                             "Установщик AeroGennis A330-300 - v2025.7.27.15-Preview",
+		"window_title":                             "Установщик AeroGennis A330-300 - v2025.8.3.20-Preview",
 		"reinstall_button":                         "Проверить обновления / Переустановить",
 		"aircraft_installed_title":                 "Обнаружена Установка",
 		"aircraft_installed_desc":                  "Приложение обнаружило, что AeroGennis A330-300 уже установлен. Вы можете проверить наличие обновлений или переустановить при необходимости.",
